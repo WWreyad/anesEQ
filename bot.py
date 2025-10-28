@@ -1,41 +1,34 @@
 import os
-from flask import Flask, request
+import time
 import requests
 import openai
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-app = Flask(__name__)
+offset = 0
+print("Bot running...")
 
-@app.route("/", methods=["GET"])
-def home():
-    return "Bot is alive!"
-
-@app.route("/", methods=["POST"])
-def webhook():
-    data = request.get_json(force=True)
-    print("DEBUG: Received update:", data, flush=True)
-
-    if not data or "message" not in data:
-        return "no message", 200
-
-    chat_id = data["message"]["chat"]["id"]
-    text = data["message"].get("text", "")
-
+while True:
     try:
-        completion = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": text}]
-        )
-        reply = completion.choices[0].message["content"]
+        res = requests.get(f"{BASE}/getUpdates", params={"offset": offset}).json()
+        for upd in res.get("result", []):
+            offset = upd["update_id"] + 1
+            msg = upd.get("message")
+            if not msg:
+                continue
+            chat_id = msg["chat"]["id"]
+            text = msg.get("text", "")
+            print("Received:", text)
+
+            # Ask GPT
+            reply = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": text}]
+            ).choices[0].message["content"]
+
+            requests.post(f"{BASE}/sendMessage", json={"chat_id": chat_id, "text": reply})
     except Exception as e:
-        reply = f"Error: {e}"
-
-    send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(send_url, json={"chat_id": chat_id, "text": reply})
-    return "ok", 200
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+        print("Error:", e)
+    time.sleep(2)
