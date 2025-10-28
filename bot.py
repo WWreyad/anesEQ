@@ -1,5 +1,4 @@
 import os
-import logging
 from flask import Flask, request
 import requests
 import openai
@@ -13,18 +12,17 @@ app = Flask(__name__)
 def home():
     return "Bot is alive!"
 
-# This route accepts any POST to make sure Telegram works
 @app.route("/", methods=["POST"])
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
     data = request.get_json(force=True)
+    print("DEBUG: Received update:", data, flush=True)
+
     if not data or "message" not in data:
         return "no message", 200
 
     chat_id = data["message"]["chat"]["id"]
     text = data["message"].get("text", "")
 
-    # Ask GPT
     try:
         completion = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
@@ -32,9 +30,8 @@ def webhook():
         )
         reply = completion.choices[0].message["content"]
     except Exception as e:
-        reply = f"Error: {str(e)}"
+        reply = f"Error: {e}"
 
-    # Reply to Telegram
     send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     requests.post(send_url, json={"chat_id": chat_id, "text": reply})
     return "ok", 200
